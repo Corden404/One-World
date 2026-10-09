@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.mjs",
-    "check": "node --check dist/app.js && node --check dist/depth-view.js && node --check dist/scenes.js && node --check dist/journey.js && node --check dist/motion.js && node --test tests/*.test.mjs",
+    "check": "node --check dist/app.js && node --check dist/depth-view.js && node --check dist/assets.js && node --check dist/geometry.js && node --check dist/scenes.js && node --check dist/journey.js && node --check dist/motion.js && node --test tests/*.test.mjs",
+    "check:browser": "node scripts/check-browser.mjs",
     "start": "node scripts/serve.mjs"
-  }
+  },
+  "devDependencies": { "playwright": "1.62.1" }
 }
