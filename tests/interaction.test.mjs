@@ -39,7 +39,12 @@ test('tilt calibrates relative to the hold angle and follows screen rotation', (
   const landscape = tiltToPointer(60, 23, baseline, 90);
   assert.ok(Math.abs(landscape.x) < 1e-6); assert.equal(landscape.y, -1);
   assert.equal(tiltToPointer(-179, 0, { beta: 179, gamma: 0 }).y, 2 / 18);
-  assert.deepEqual(tiltToPointer(100, 100, baseline), { x: 1, y: 1 });
+  assert.deepEqual(tiltToPointer(78, 23, baseline), { x: 1, y: 1 });
+  assert.deepEqual(tiltToPointer(90, 35, baseline), { x: 30 / 18, y: 30 / 18 });
+  assert.deepEqual(tiltToPointer(100, 100, baseline), { x: 30 / 18, y: 30 / 18 });
+  assert.deepEqual(tiltToPointer(20, -90, baseline), { x: -30 / 18, y: -30 / 18 });
+  const maximumLandscape = tiltToPointer(60, 35, baseline, 270);
+  assert.ok(Math.abs(maximumLandscape.x) < 1e-6); assert.equal(maximumLandscape.y, 30 / 18);
 });
 
 test('iOS permission stays deferred until a tap and requests both sensors together', async () => {
@@ -71,5 +76,7 @@ test('mobile input ignores invalid readings, recenters on rotation and uses moti
   listeners.get('screen-change')();
   listeners.get('devicemotion')({ interval: 100, rotationRate: { beta: 90, gamma: 0 } });
   assert.ok(values.at(-1).x > .49); assert.ok(Math.abs(values.at(-1).y) < 1e-6);
+  listeners.get('devicemotion')({ interval: 100, rotationRate: { beta: 1000, gamma: -1000 } });
+  assert.deepEqual(values.at(-1), { x: 30 / 18, y: 30 / 18 });
   assert.ok(states.includes('active'));
 });

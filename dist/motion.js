@@ -1,9 +1,12 @@
-const clamp = value => Math.max(-1, Math.min(1, value));
+const TILT_RESPONSE_ANGLE = 18;
+const MAX_TILT_ANGLE = 30;
+const MAX_TILT_POINTER = MAX_TILT_ANGLE / TILT_RESPONSE_ANGLE;
+const clamp = value => Math.max(-MAX_TILT_POINTER, Math.min(MAX_TILT_POINTER, value));
 const angleDelta = (value, origin) => ((value - origin + 540) % 360) - 180;
 
 export function tiltToPointer(beta, gamma, baseline, screenAngle = 0) {
-  const x = angleDelta(gamma, baseline.gamma) / 18;
-  const y = angleDelta(beta, baseline.beta) / 18;
+  const x = angleDelta(gamma, baseline.gamma) / TILT_RESPONSE_ANGLE;
+  const y = angleDelta(beta, baseline.beta) / TILT_RESPONSE_ANGLE;
   const angle = screenAngle * Math.PI / 180;
   return { x: clamp(x * Math.cos(angle) + y * Math.sin(angle)),
     y: clamp(-x * Math.sin(angle) + y * Math.cos(angle)) };
@@ -37,8 +40,8 @@ export class MotionInput {
       if (!rate || !Number.isFinite(rate.beta) || !Number.isFinite(rate.gamma)) return;
       const dt = Math.max(0, Math.min(100, event.interval || 16)) / 1000;
       const decay = Math.exp(-dt * 1.5);
-      this.rotation.beta = Math.max(-18, Math.min(18, this.rotation.beta * decay + rate.beta * dt));
-      this.rotation.gamma = Math.max(-18, Math.min(18, this.rotation.gamma * decay + rate.gamma * dt));
+      this.rotation.beta = Math.max(-MAX_TILT_ANGLE, Math.min(MAX_TILT_ANGLE, this.rotation.beta * decay + rate.beta * dt));
+      this.rotation.gamma = Math.max(-MAX_TILT_ANGLE, Math.min(MAX_TILT_ANGLE, this.rotation.gamma * decay + rate.gamma * dt));
       this.emit(tiltToPointer(this.rotation.beta, this.rotation.gamma, { beta: 0, gamma: 0 }, this.angle()));
     };
     this.recenter = () => {
