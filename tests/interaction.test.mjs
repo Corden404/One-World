@@ -4,12 +4,38 @@ import { existsSync } from 'node:fs';
 import { scenes } from '../dist/scenes.js';
 import { journeyAt, loopPosition, LEG_DISTANCE, LIGHT_OUT_DISTANCE } from '../dist/journey.js';
 import { MotionInput, tiltToPointer, sensorPermission } from '../dist/motion.js';
+import { buildDepthMesh, meshResolution } from '../dist/geometry.js';
+import { sceneAssets } from '../dist/assets.js';
 
 test('every world has two lighting textures, depth and an outgoing connector', () => {
   assert.equal(scenes.length, 8);
-  for (const scene of scenes) for (const field of ['image', 'darkImage', 'depth', 'connector']) {
+  for (const scene of scenes.flatMap(scene => [scene, sceneAssets(scene, true)])) for (const field of ['image', 'darkImage', 'depth', 'connector']) {
     assert.ok(scene[field], `${scene.id}: ${field}`);
     assert.ok(existsSync(new URL(`../dist/${scene[field]}`, import.meta.url)), `${scene.id}: missing ${field}`);
+  }
+});
+
+test('compact assets preserve scene geometry and share the original depth map', () => {
+  for (const scene of scenes) {
+    const compact = sceneAssets(scene, true);
+    assert.equal(compact.aspectRatio, scene.aspectRatio); assert.equal(compact.depth, scene.depth);
+    assert.ok(compact.image.includes('/mobile/')); assert.ok(compact.connector.includes('/mobile/'));
+  }
+});
+
+test('depth mesh retains corner UVs, samples depth and stays within index capacity', () => {
+  const data = new Uint8ClampedArray([0, 0, 0, 255, 85, 85, 85, 255, 170, 170, 170, 255, 255, 255, 255, 255]);
+  const { vertices, indices } = buildDepthMesh({ data, width: 2, height: 2 }, 1, 1);
+  assert.deepEqual([...vertices.slice(0, 5)], [-1, 1, 0, 0, 0]);
+  assert.deepEqual([...vertices.slice(-5)], [1, -1, 1, 1, 1]);
+  assert.ok(Math.abs(vertices[9] - 1 / 3) < 1e-6);
+  assert.deepEqual([...indices], [0, 1, 2, 1, 3, 2]);
+  assert.throws(() => buildDepthMesh({ data, width: 2, height: 2 }, 256, 256), RangeError);
+  for (const width of [390, 600]) {
+    const { columns, rows } = meshResolution(width);
+    const mesh = buildDepthMesh({ data, width: 2, height: 2 }, columns, rows);
+    assert.equal(mesh.indices.length, columns * rows * 6);
+    assert.equal(Math.max(...mesh.indices.slice(-6)), (columns + 1) * (rows + 1) - 1);
   }
 });
 

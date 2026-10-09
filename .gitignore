@@ -8,6 +8,7 @@ node_modules/
 generated/
 raw-assets/
 output/
+.trash/
 *.tar.gz
 *.log
 .DS_Store

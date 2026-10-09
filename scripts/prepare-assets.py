@@ -5,16 +5,28 @@ import math
 import numpy as np
 from PIL import Image, ImageFilter
 
-root = Path(__file__).resolve().parents[2]
-assets = root / 'worlds' / 'dist' / 'assets'
+project = Path(__file__).resolve().parents[1]
+root = project.parent
+assets = project / 'dist' / 'assets'
 parser = argparse.ArgumentParser()
 parser.add_argument('--depth', action='store_true')
+parser.add_argument('--mobile-only', action='store_true', help='Create compact variants from existing deployment images')
 selection = parser.add_mutually_exclusive_group()
 selection.add_argument('--wide-only', action='store_true')
 selection.add_argument('--expansion-only', action='store_true')
 selection.add_argument('--papercut-only', action='store_true')
 args = parser.parse_args()
-sources = [('开灯.png', 'forest-on'), ('关灯.png', 'forest-off'), ('场景2.png', 'ocean-on'), ('generated/wood-connector.png', 'wood-connector')]
+assets.mkdir(parents=True, exist_ok=True)
+if args.mobile_only:
+    compact = assets / 'mobile'
+    compact.mkdir(parents=True, exist_ok=True)
+    for source in sorted(assets.glob('*.webp')):
+        image = Image.open(source).convert('RGB')
+        image.thumbnail((768, 1152), Image.Resampling.LANCZOS)
+        image.save(compact / source.name, quality=85, method=6)
+        print(f'mobile/{source.name}: {image.size}', flush=True)
+    raise SystemExit(0)
+sources = [('开灯.png', 'forest-on'), ('场景2.png', 'ocean-on'), ('generated/wood-connector.png', 'wood-connector')]
 wide_sources = [('generated/forest-wide-on.png', 'forest-wide-on'), ('generated/forest-wide-off.png', 'forest-wide-off'), ('generated/ocean-wide-on.png', 'ocean-wide-on')]
 expansion_sources = [(f'generated/expansion/{name}-{state}.png', f'{name}-{state}')
                      for name in ['cloud', 'snow', 'observatory'] for state in ['on', 'off']]
@@ -27,7 +39,7 @@ papercut_sources += [(f'generated/papercut/{name}.png', name) for name in
                      ['forest-off-aligned', 'ocean-off', 'observatory-bamboo-connector',
                       'bamboo-town-connector', 'town-train-connector', 'train-forest-connector']]
 sources = (wide_sources if args.wide_only else expansion_sources if args.expansion_only else
-           papercut_sources if args.papercut_only else sources + wide_sources + expansion_sources + papercut_sources)
+           papercut_sources if args.papercut_only else sources + expansion_sources + papercut_sources)
 for source, name in sources:
     if not (root / source).exists():
         continue
@@ -44,7 +56,7 @@ if args.depth:
     print('Model:', [(x.name, x.shape) for x in session.get_inputs()], flush=True)
     names = (['forest-wide', 'ocean-wide'] if args.wide_only else
              ['cloud', 'snow', 'observatory'] if args.expansion_only else paper_names if args.papercut_only else
-             ['forest', 'ocean', 'forest-wide', 'ocean-wide', 'cloud', 'snow', 'observatory'] + paper_names)
+             ['forest', 'ocean', 'cloud', 'snow', 'observatory'] + paper_names)
     for name in names:
         if not (assets / f'{name}-on.webp').exists():
             continue
