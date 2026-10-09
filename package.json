@@ -1,0 +1,11 @@
+{
+  "name": "little-worlds",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "check": "node --check dist/app.js && node --check dist/depth-view.js && node --check dist/scenes.js && node --check dist/journey.js && node --check dist/motion.js && node --test tests/*.test.mjs",
+    "start": "node scripts/serve.mjs"
+  }
+}

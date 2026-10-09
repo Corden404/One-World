@@ -1,0 +1,19 @@
+:root{color-scheme:dark;font-family:"Noto Serif SC","Songti SC","SimSun",serif}
+*{box-sizing:border-box}
+html{margin:0;background:#000;scroll-behavior:auto;scrollbar-width:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
+body{margin:0;min-height:100svh;background:#000;overflow-x:hidden;scrollbar-width:none}
+.world-window{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(100svh * .681369));height:min(100svh,calc(100vw / .681369));overflow:hidden;background:#000;outline:none;touch-action:pan-y pinch-zoom}
+.world-track{position:absolute;top:0;left:50%;margin-left:-50vw;width:100vw;will-change:transform}
+.world-scene{--scene-aspect:.681369;--light:1;position:relative;margin:0 auto;width:min(100vw,calc(100svh * var(--scene-aspect)));height:calc(min(100vw,calc(100svh * var(--scene-aspect))) / var(--scene-aspect));overflow:hidden;background:#000}
+.scene-surface{position:absolute;inset:0;width:100%;height:100%}
+.scene-fallback,.fallback-off,.scene-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.fallback-off{opacity:calc(1 - var(--light,1))}
+.scene-canvas{opacity:0}
+.scene-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;mask-image:linear-gradient(to right,#000 0 4%,transparent 6% 94%,#000 96% 100%),linear-gradient(to bottom,#000 0 2%,transparent 3.5% 93.5%,#000 95.5% 100%);-webkit-mask-image:linear-gradient(to right,#000 0 4%,transparent 6% 94%,#000 96% 100%),linear-gradient(to bottom,#000 0 2%,transparent 3.5% 93.5%,#000 95.5% 100%)}
+.world-scene.ready .scene-canvas{opacity:1}
+.world-scene.ready .fallback-off{visibility:hidden}
+.connector{position:relative;margin:0 auto;aspect-ratio:1;background:#000 center/contain no-repeat}
+#scroll-space{height:calc(100svh + 3000px);pointer-events:none}
+.sr-only{position:absolute;left:0;top:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
