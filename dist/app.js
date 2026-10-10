@@ -1,5 +1,5 @@
 import { scenes } from './scenes.js';
-import { DepthView, loadImage } from './depth-view.js';
+import { DepthView, loadImage, retainImages } from './depth-view.js';
 import { COMPACT_MEDIA, sceneAssets } from './assets.js';
 import { journeyAt, loopPosition, LEG_DISTANCE, WheelJourney } from './journey.js';
 import { MotionInput } from './motion.js';
@@ -11,6 +11,8 @@ const viewScenes = [...scenes, scenes[0]], maximumScroll = scenes.length * LEG_D
 const wheelJourney = new WheelJourney(scenes.length);
 const target = { x: 0, y: 0 }, pointer = { x: 0, y: 0 }, views = [], connectors = [];
 const sceneLoads = new Map(), connectorLoads = new Map(), retryAfter = new Map();
+const retainedIndexes = new Set();
+let retainedFrom = -1, retainedCompact = null;
 let loading = true, depthEnabled = !reduced.matches, current = -1, hasExplored = window.scrollY > 0;
 let journey = journeyAt(window.scrollY, viewScenes.length), metrics = [], layoutDirty = true, journeyDirty = true;
 let animationFrame = 0, previous = performance.now();
@@ -60,8 +62,28 @@ function prepareConnector(index) {
     connectorLoads.delete(source); retryAfter.set(key, performance.now() + 10000); console.warn('Connector:', error);
   }));
   return connectorLoads.get(source).then(image => {
-    if (image && source === sceneAssets(scenes[index], compact.matches).connector) connectors[index].style.backgroundImage = `url('${source}')`;
+    if (image && retainedIndexes.has(index) && source === sceneAssets(scenes[index], compact.matches).connector) connectors[index].style.backgroundImage = `url('${source}')`;
   });
+}
+function trimAssets() {
+  if (retainedFrom === journey.from && retainedCompact === compact.matches) return;
+  retainedFrom = journey.from; retainedCompact = compact.matches;
+  retainedIndexes.clear();
+  for (const index of [journey.from, journey.to, (journey.from + scenes.length - 1) % scenes.length]) retainedIndexes.add(index);
+  const urls = new Set(), keys = new Set();
+  views.forEach((view, index) => {
+    const assets = sceneAssets(view.config, compact.matches);
+    if (!retainedIndexes.has(index) || (!view.active && view.on && view.scene.image !== assets.image && view.loadingImage !== assets.image)) {
+      view.unload();
+      return;
+    }
+    keys.add(`scene:${index}:${assets.image}`);
+    for (const url of [assets.image, assets.darkImage, assets.depth, assets.connector]) if (url) urls.add(url);
+  });
+  for (const key of sceneLoads.keys()) if (!keys.has(key)) sceneLoads.delete(key);
+  for (const source of connectorLoads.keys()) if (!urls.has(source)) connectorLoads.delete(source);
+  connectors.forEach((connector, index) => { if (!retainedIndexes.has(index)) connector.style.backgroundImage = ''; });
+  retainImages(urls);
 }
 function refreshMetrics() {
   scrollSpace.style.height = `${maximumScroll + window.innerHeight}px`;
@@ -87,6 +109,7 @@ function applyJourney() {
   views.forEach((view, index) => { if (visible(index)) view.setActive(true); });
   prepareScene(journey.from);
   if (hasExplored || travel > 0) { prepareScene(journey.to); prepareConnector(journey.from); }
+  trimAssets();
   const nextCurrent = Math.round(journey.camera);
   if (current !== nextCurrent) {
     current = nextCurrent; stage.setAttribute('aria-label', `${viewScenes[current].title}，滚动或上下滑动探索场景，移动鼠标或倾斜手机探索景深。`);

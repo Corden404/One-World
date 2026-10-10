@@ -101,6 +101,8 @@ try {
   results.newSceneLighting = [];
   for (let i = 1; i < ids.length; i++) {
     await scroll(page, i * LEG_DISTANCE, ids[i]);
+    assert.ok(await page.locator('.scene-fallback[src]').count() <= 3, 'Only the current, next and previous scenes should retain image references');
+    assert.ok(await page.locator('.connector').evaluateAll(elements => elements.filter(element => element.style.backgroundImage).length) <= 3, 'Distant connectors must release image references');
     if (!newScenes.includes(scenes[i])) continue;
     const scene = scenes[i];
     await page.screenshot({ path: fileURLToPath(new URL(`${scene.id}-day.png`, output)) });
@@ -132,6 +134,7 @@ try {
   assert.equal(loopStats.contexts, 2, 'Looping must reuse at most two WebGL contexts');
   assert.equal(loopStats.compiles, 4, 'Shaders must compile once for each retained context');
   results.loopStats = loopStats;
+  results.sceneCacheBounded = true;
   const beforeReuse = loopStats.uploads;
   await scroll(page, 2300, 'ocean'); await scroll(page, 0, 'forest');
   assert.ok((await page.evaluate(() => window.renderStats.uploads)) - beforeReuse <= 2, 'Returning to a cached adjacent scene should reuse its textures');
@@ -198,6 +201,24 @@ try {
     releaseNight(); await ready(progressivePage, 'ocean');
     results.progressiveLoadingPassed = true;
   } finally { releaseDepth(); releaseNight(); await progressive.close(); }
+
+  const eviction = await browser.newContext({ reducedMotion: 'reduce' });
+  const evictionPage = await eviction.newPage(); await instrument(evictionPage);
+  let releaseEvictedNight;
+  const evictionGate = new Promise(resolve => { releaseEvictedNight = resolve; });
+  await evictionPage.route('**/ocean-off.webp', async route => { await evictionGate; await route.continue(); });
+  try {
+    await evictionPage.goto(url); await ready(evictionPage, 'forest');
+    await evictionPage.evaluate(value => scrollTo(0, value), LEG_DISTANCE);
+    await evictionPage.waitForFunction(() => document.querySelector('#ocean-scene').classList.contains('ready'));
+    await scroll(evictionPage, 4 * LEG_DISTANCE, 'observatory');
+    const nightResponse = evictionPage.waitForResponse(response => response.url().endsWith('/ocean-off.webp'));
+    releaseEvictedNight(); await (await nightResponse).finished();
+    assert.equal(await evictionPage.locator('#ocean-scene .scene-fallback').getAttribute('src'), null, 'Late loads must not repopulate an evicted scene');
+    assert.equal(await evictionPage.locator('#ocean-scene .fallback-off').count(), 0);
+    await scroll(evictionPage, LEG_DISTANCE, 'ocean');
+    results.evictionRecoveryPassed = true;
+  } finally { releaseEvictedNight(); await eviction.close(); }
 
   const failure = await browser.newContext({ reducedMotion: 'reduce' });
   const failurePage = await failure.newPage(); await instrument(failurePage);

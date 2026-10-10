@@ -53,9 +53,12 @@ export function loadImage(url) {
       try { return await attempt(); }
       catch (error) { if (index === 2) throw error; await wait(index === 0 ? 200 : 600); }
     }
-  })().catch(error => { imageCache.delete(url); throw error; });
+  })().catch(error => { if (imageCache.get(url) === promise) imageCache.delete(url); throw error; });
   imageCache.set(url, promise);
   return promise;
+}
+export function retainImages(urls) {
+  for (const url of imageCache.keys()) if (!urls.has(url)) imageCache.delete(url);
 }
 function geometry(image, width) {
   const { columns, rows } = meshResolution(width), key = `${columns}:${rows}`;
@@ -172,6 +175,13 @@ export class DepthView {
     this.ready = false; this.lastDraw = null; this.element.classList.remove('ready');
     if (!this.slot) return;
     const placeholder = this.canvas.cloneNode(); this.canvas.replaceWith(placeholder); this.slot.owner = null; this.slot = null; this.canvas = placeholder;
+  }
+  unload() {
+    if (this.active) return;
+    this.release(); ++this.serial;
+    this.on = this.off = this.depth = this.loadingImage = null; this.complete = false; this.scene = this.config;
+    this.fallback.removeAttribute('src'); this.frame.removeAttribute('src');
+    this.surface.querySelector('.fallback-off')?.remove();
   }
   setup() {
     const slot = this.slot; if (!slot || slot.lost) return;
