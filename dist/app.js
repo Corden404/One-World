@@ -1,13 +1,14 @@
 import { scenes } from './scenes.js';
 import { DepthView, loadImage } from './depth-view.js';
 import { COMPACT_MEDIA, sceneAssets } from './assets.js';
-import { journeyAt, loopPosition, LEG_DISTANCE } from './journey.js';
+import { journeyAt, loopPosition, LEG_DISTANCE, WheelJourney } from './journey.js';
 import { MotionInput } from './motion.js';
 
 const stage = document.querySelector('#world-window'), track = document.querySelector('#world-track');
 const status = document.querySelector('#live-status'), scrollSpace = document.querySelector('#scroll-space');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)'), compact = matchMedia(COMPACT_MEDIA);
 const viewScenes = [...scenes, scenes[0]], maximumScroll = scenes.length * LEG_DISTANCE;
+const wheelJourney = new WheelJourney(scenes.length);
 const target = { x: 0, y: 0 }, pointer = { x: 0, y: 0 }, views = [], connectors = [];
 const sceneLoads = new Map(), connectorLoads = new Map(), retryAfter = new Map();
 let loading = true, depthEnabled = !reduced.matches, lastInput = 0, current = -1, hasExplored = window.scrollY > 0;
@@ -126,7 +127,7 @@ window.addEventListener('scroll', () => { if (window.scrollY > 0) hasExplored = 
 window.addEventListener('wheel', event => {
   if (event.ctrlKey || !event.deltaY) return;
   const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
-  event.preventDefault(); hasExplored = true; window.scrollTo(0, loopPosition(window.scrollY + delta, scenes.length)); requestRender();
+  event.preventDefault(); hasExplored = true; window.scrollTo(0, wheelJourney.advance(window.scrollY, delta, performance.now())); requestRender();
 }, { passive: false });
 window.addEventListener('resize', updateLayout, { passive: true });
 window.addEventListener('online', () => { retryAfter.clear(); requestRender(); });

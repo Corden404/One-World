@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { scenes } from '../dist/scenes.js';
-import { journeyAt, loopPosition, LEG_DISTANCE, LIGHT_OUT_DISTANCE } from '../dist/journey.js';
+import { journeyAt, loopPosition, LEG_DISTANCE, LIGHT_OUT_DISTANCE, NIGHT_PAUSE_MS, WheelJourney } from '../dist/journey.js';
 import { MotionInput, tiltToPointer, sensorPermission } from '../dist/motion.js';
 import { buildDepthMesh, meshResolution } from '../dist/geometry.js';
 import { sceneAssets } from '../dist/assets.js';
@@ -56,6 +56,38 @@ test('looping retains forward and backward wheel overshoot', () => {
   assert.equal(loopPosition(length + 120, scenes.length), 120);
   assert.equal(loopPosition(-120, scenes.length), length - 120);
   assert.equal(loopPosition(length * 3 + 5, scenes.length), 5);
+});
+
+test('forward wheel input holds every world at full darkness before travelling', () => {
+  const wheel = new WheelJourney(scenes.length);
+  for (let index = 0; index < scenes.length; index++) {
+    const night = index * LEG_DISTANCE + LIGHT_OUT_DISTANCE, start = index * 2000;
+    assert.equal(wheel.advance(night - 100, 10000, start), night, 'Large wheel deltas must stop at the first night');
+    for (const elapsed of [100, 500, NIGHT_PAUSE_MS - 1]) {
+      assert.equal(wheel.advance(night, 500, start + elapsed), night, 'Continued scrolling must neither skip nor extend the pause');
+    }
+    const state = journeyAt(night, scenes.length + 1);
+    assert.equal(state.phase, 'night'); assert.equal(state.fromLight, 0); assert.equal(state.camera, index);
+    assert.equal(wheel.advance(night, 120, start + NIGHT_PAUSE_MS), night + 120, 'Resume using only the new wheel delta');
+  }
+});
+
+test('night pause allows immediate reverse input and rearms when returning to night', () => {
+  const wheel = new WheelJourney(scenes.length);
+  assert.equal(wheel.advance(800, 200, 0), 900);
+  assert.equal(wheel.advance(900, -120, 100), 780);
+  assert.equal(wheel.advance(780, 200, 200), 900);
+  assert.equal(wheel.advance(900, 100, 1000), 900);
+  assert.equal(wheel.advance(900, 100, 1200), 1000);
+});
+
+test('wheel pause preserves looping and catches the first night after wrapping', () => {
+  const wheel = new WheelJourney(scenes.length), length = scenes.length * LEG_DISTANCE;
+  assert.equal(wheel.advance(length - 100, 220, 0), 120);
+  assert.equal(wheel.advance(120, -270, 10), length - 150);
+  assert.equal(wheel.advance(length - 150, 2000, 20), LIGHT_OUT_DISTANCE);
+  assert.equal(wheel.advance(LIGHT_OUT_DISTANCE, 100, 20 + NIGHT_PAUSE_MS - 1), LIGHT_OUT_DISTANCE);
+  assert.equal(wheel.advance(LIGHT_OUT_DISTANCE, 100, 20 + NIGHT_PAUSE_MS), LIGHT_OUT_DISTANCE + 100);
 });
 
 test('tilt calibrates relative to the hold angle and follows screen rotation', () => {

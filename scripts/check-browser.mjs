@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { createSiteServer } from './serve.mjs';
+import { LIGHT_OUT_DISTANCE, NIGHT_PAUSE_MS, LEG_DISTANCE } from '../dist/journey.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE_URL || 'playwright');
 const server = createSiteServer({ prefix: '/One-World/' });
 server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -65,6 +66,26 @@ try {
   await page.waitForFunction(() => document.body.dataset.phase === 'day-night');
   const lighting = await page.evaluate(() => [getComputedStyle(document.querySelector('#forest-scene')).getPropertyValue('--light'), getComputedStyle(document.querySelector('#ocean-scene')).getPropertyValue('--light')]);
   assert.ok(Math.abs(Number(lighting[0]) - .5) < .001); assert.equal(Number(lighting[1]), 1);
+  await page.mouse.wheel(0, 5000);
+  await page.waitForFunction(() => document.body.dataset.phase === 'night');
+  const nightOffset = await page.locator('#world-track').evaluate(element => element.style.transform);
+  for (let i = 0; i < 4; i++) {
+    await page.mouse.wheel(0, 2000); await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(() => scrollY), LIGHT_OUT_DISTANCE, 'Continued wheel input must hold the fully dark scene');
+  }
+  assert.equal(await page.locator('#world-track').evaluate(element => element.style.transform), nightOffset, 'Camera must remain still during the night pause');
+  assert.equal(await page.locator('#forest-scene').evaluate(element => Number(getComputedStyle(element).getPropertyValue('--light'))), 0);
+  await page.screenshot({ path: fileURLToPath(new URL('night-pause.png', output)) });
+  await page.waitForTimeout(NIGHT_PAUSE_MS);
+  assert.equal(await page.evaluate(() => scrollY), LIGHT_OUT_DISTANCE, 'Finishing the pause must not replay wheel input or advance automatically');
+  await page.mouse.wheel(0, LEG_DISTANCE - LIGHT_OUT_DISTANCE);
+  await page.waitForFunction(position => scrollY === position, LEG_DISTANCE); await ready(page, 'ocean');
+  await scroll(page, 0, 'forest'); await page.mouse.wheel(0, 5000);
+  await page.waitForFunction(() => document.body.dataset.phase === 'night');
+  await page.mouse.wheel(0, -200);
+  await page.waitForFunction(position => scrollY === position, LIGHT_OUT_DISTANCE - 200);
+  assert.equal(await page.locator('body').getAttribute('data-phase'), 'day-night', 'Reverse wheel input should work immediately during the pause');
+  results.nightPausePassed = true;
   const ids = ['forest', 'ocean', 'cloud', 'snow', 'observatory', 'bamboo', 'town', 'train'];
   for (let i = 1; i < ids.length; i++) await scroll(page, i * 2300, ids[i]);
   // Exercise a transition where both scenes intersect the viewport.
