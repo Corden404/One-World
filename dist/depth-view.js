@@ -59,6 +59,12 @@ export function loadImage(url) {
 }
 export function retainImages(urls) {
   for (const url of imageCache.keys()) if (!urls.has(url)) imageCache.delete(url);
+  for (const slot of slots) {
+    for (const [on, pair] of slot.textures) {
+      if (urls.has(on.getAttribute('src')) || slot.owner?.on === on) continue;
+      pair.values.forEach(texture => slot.gl.deleteTexture(texture)); slot.textures.delete(on);
+    }
+  }
 }
 function geometry(image, width) {
   const { columns, rows } = meshResolution(width), key = `${columns}:${rows}`;

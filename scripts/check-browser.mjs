@@ -16,16 +16,29 @@ await mkdir(output, { recursive: true });
 async function instrument(page) {
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
-    window.renderStats = { draws: 0, frames: 0, contexts: 0, compiles: 0, uploads: 0 };
-    const contexts = new WeakSet(), getContext = HTMLCanvasElement.prototype.getContext;
+    window.renderStats = { draws: 0, frames: 0, contexts: 0, compiles: 0, uploads: 0, liveTextures: 0 };
+    const contexts = new WeakSet(), textures = new Map(), getContext = HTMLCanvasElement.prototype.getContext;
+    const countTextures = () => { window.renderStats.liveTextures = [...textures.values()].reduce((sum, values) => sum + values.size, 0); };
     HTMLCanvasElement.prototype.getContext = function (...args) {
       const result = getContext.apply(this, args);
-      if (args[0] === 'webgl' && result && !contexts.has(result)) { contexts.add(result); window.renderStats.contexts++; }
+      if (args[0] === 'webgl' && result && !contexts.has(result)) {
+        contexts.add(result); textures.set(result, new Set()); window.renderStats.contexts++;
+        this.addEventListener('webglcontextlost', () => { textures.get(result).clear(); countTextures(); });
+      }
       return result;
     };
     for (const [method, field] of [['drawElements', 'draws'], ['compileShader', 'compiles'], ['texImage2D', 'uploads']]) {
       const original = WebGLRenderingContext.prototype[method];
       WebGLRenderingContext.prototype[method] = function (...args) { window.renderStats[field]++; return original.apply(this, args); };
+    }
+    for (const method of ['createTexture', 'deleteTexture']) {
+      const original = WebGLRenderingContext.prototype[method];
+      WebGLRenderingContext.prototype[method] = function (...args) {
+        const result = original.apply(this, args), values = textures.get(this);
+        if (method === 'createTexture' && result) values.add(result);
+        else if (method === 'deleteTexture') values.delete(args[0]);
+        countTextures(); return result;
+      };
     }
     const frame = requestAnimationFrame;
     window.requestAnimationFrame = callback => frame(time => { window.renderStats.frames++; callback(time); });
@@ -239,6 +252,8 @@ try {
     await evictionPage.evaluate(value => scrollTo(0, value), LEG_DISTANCE);
     await evictionPage.waitForFunction(() => document.querySelector('#ocean-scene').classList.contains('ready'));
     await scroll(evictionPage, 4 * LEG_DISTANCE, 'observatory');
+    assert.equal(await evictionPage.evaluate(() => window.renderStats.liveTextures), 2, 'GPU texture caches must release the images of distant scenes');
+    results.distantTexturesReleased = true;
     const nightResponse = evictionPage.waitForResponse(response => response.url().endsWith('/ocean-off.webp'));
     releaseEvictedNight(); await (await nightResponse).finished();
     assert.equal(await evictionPage.locator('#ocean-scene .scene-fallback').getAttribute('src'), null, 'Late loads must not repopulate an evicted scene');
