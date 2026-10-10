@@ -1,6 +1,8 @@
 # One World · 一方世界
 
-木质相框中的八幕微缩世界：森林秘境、深蓝之境、云端山谷、雪夜小屋、星空天文台、竹林幽径、纸影古城和云间列车。网页只显示场景图片，保持原比例，剩余区域为纯黑。
+木质相框中的十二幕微缩世界：森林秘境、深蓝之境、云端山谷、雪夜小屋、星空天文台、竹林幽径、纸影古城、云间列车、潮汐灯塔、沙海遗迹、蘑菇工坊和萤火荷塘。网页只显示场景图片，保持原比例，剩余区域为纯黑。
+
+每幕都有独立的日夜或开关灯变化。新增四幕采用分层剪纸风格：灯塔从日光海湾转为月色与灯塔暖光，沙海从金色白昼转为星空与遗迹火光，蘑菇工坊熄灭室内暖灯后保留月光与蘑菇荧光，荷塘从晨光转为萤火虫、月光倒影与桥边灯笼。探索顺序在云间列车后进入四幕新场景，再返回森林。
 
 ## 本地运行
 
@@ -14,7 +16,7 @@ npm run dev
 
 打开 http://127.0.0.1:4173。执行 `npm run check` 检查 JavaScript 语法、场景素材、灯光隔离、循环滚动与传感器逻辑。
 
-浏览器回归检查使用开发依赖 Playwright：执行 `npm ci`、`npx playwright install chromium`，再执行 `npm run check:browser`。检查覆盖项目子路径、加载失败重试、正反向滚轮循环、手机素材切换、静态回退和 WebGL 上下文恢复。检查输出位于忽略的 `output/playwright/`。
+浏览器回归检查使用开发依赖 Playwright：执行 `npm ci`、`npx playwright install chromium`，再执行 `npm run check:browser`。检查覆盖项目子路径、加载失败重试、十二幕正反向滚轮循环、新场景日夜与灯光隔离、手机素材切换、静态回退和 WebGL 上下文恢复。检查输出及新场景日夜截图位于忽略的 `output/playwright/`。
 
 ## 交互
 
@@ -61,6 +63,8 @@ GitHub 官方说明：[GitHub Pages 概览](https://docs.github.com/en/pages/get
 素材处理工具需要自行提供上一级目录中的源图和 Depth Anything V2 Small ONNX 模型，并在 conda `dev` 环境安装 Pillow、NumPy、ONNX Runtime。仓库已有处理后的素材，运行和部署无需重新生成，也无需下载模型。
 
 脚本将素材输出到当前项目的 `dist/assets/`。运行 `python scripts/prepare-assets.py --mobile-only` 可从已有部署图片重新生成手机尺寸素材，无需源图或深度模型。未使用素材的本地恢复副本可放在忽略的 `.trash/`，不会随站点发布。
+
+新增四幕的原始图片与五张木纹连接区位于本项目忽略的 `generated/scene-expansion/`。在 conda `dev` 环境执行 `python scripts/prepare-assets.py --new-scenes-only --depth`，再执行 `python scripts/prepare-assets.py --new-scenes-only --mobile-only` 可重新准备新场景及手机资源。处理脚本校验日夜图片尺寸一致且为 2:3 竖幅，两种光照共用同一张预生成深度图。
 
 ## 技术与许可
 

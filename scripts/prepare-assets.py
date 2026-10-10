@@ -8,6 +8,9 @@ from PIL import Image, ImageFilter
 project = Path(__file__).resolve().parents[1]
 root = project.parent
 assets = project / 'dist' / 'assets'
+new_names = ['paper-lighthouse', 'paper-desert', 'paper-workshop', 'paper-lotus']
+new_connectors = ['train-lighthouse', 'lighthouse-desert', 'desert-workshop',
+                  'workshop-lotus', 'lotus-forest']
 parser = argparse.ArgumentParser()
 parser.add_argument('--depth', action='store_true')
 parser.add_argument('--mobile-only', action='store_true', help='Create compact variants from existing deployment images')
@@ -15,12 +18,18 @@ selection = parser.add_mutually_exclusive_group()
 selection.add_argument('--wide-only', action='store_true')
 selection.add_argument('--expansion-only', action='store_true')
 selection.add_argument('--papercut-only', action='store_true')
+selection.add_argument('--new-scenes-only', action='store_true', help='Prepare lighthouse, desert, workshop, lotus and their connectors')
 args = parser.parse_args()
 assets.mkdir(parents=True, exist_ok=True)
 if args.mobile_only:
     compact = assets / 'mobile'
     compact.mkdir(parents=True, exist_ok=True)
-    for source in sorted(assets.glob('*.webp')):
+    mobile_sources = sorted(assets.glob('*.webp'))
+    if args.new_scenes_only:
+        names = {f'{name}-{state}.webp' for name in new_names for state in ['on', 'off']}
+        names.update(f'{name}-connector.webp' for name in new_connectors)
+        mobile_sources = [assets / name for name in sorted(names)]
+    for source in mobile_sources:
         image = Image.open(source).convert('RGB')
         image.thumbnail((768, 1152), Image.Resampling.LANCZOS)
         image.save(compact / source.name, quality=85, method=6)
@@ -38,10 +47,23 @@ papercut_sources = [(f'generated/papercut/{name}-{state}.png', f'{name}-{state}'
 papercut_sources += [(f'generated/papercut/{name}.png', name) for name in
                      ['forest-off-aligned', 'ocean-off', 'observatory-bamboo-connector',
                       'bamboo-town-connector', 'town-train-connector', 'train-forest-connector']]
+new_sources = [(project / 'generated' / 'scene-expansion' / f'{name}-{state}.png', f'{name}-{state}')
+               for name in new_names for state in ['on', 'off']]
+new_sources += [(project / 'generated' / 'scene-expansion' / f'{name}-connector.png', f'{name}-connector')
+                for name in new_connectors]
+if args.new_scenes_only:
+    for name in new_names:
+        source = project / 'generated' / 'scene-expansion'
+        with Image.open(source / f'{name}-on.png') as day, Image.open(source / f'{name}-off.png') as night:
+            if day.size != night.size or day.width * 3 != day.height * 2:
+                raise ValueError(f'{name}: lighting versions must share the same 2:3 portrait dimensions')
 sources = (wide_sources if args.wide_only else expansion_sources if args.expansion_only else
-           papercut_sources if args.papercut_only else sources + expansion_sources + papercut_sources)
+           papercut_sources if args.papercut_only else new_sources if args.new_scenes_only else
+           sources + expansion_sources + papercut_sources + new_sources)
 for source, name in sources:
     if not (root / source).exists():
+        if args.new_scenes_only:
+            raise FileNotFoundError(f'Missing new scene source: {root / source}')
         continue
     image = Image.open(root / source).convert('RGB')
     image.thumbnail((2048, 1600), Image.Resampling.LANCZOS)
@@ -56,7 +78,8 @@ if args.depth:
     print('Model:', [(x.name, x.shape) for x in session.get_inputs()], flush=True)
     names = (['forest-wide', 'ocean-wide'] if args.wide_only else
              ['cloud', 'snow', 'observatory'] if args.expansion_only else paper_names if args.papercut_only else
-             ['forest', 'ocean', 'cloud', 'snow', 'observatory'] + paper_names)
+             new_names if args.new_scenes_only else
+             ['forest', 'ocean', 'cloud', 'snow', 'observatory'] + paper_names + new_names)
     for name in names:
         if not (assets / f'{name}-on.webp').exists():
             continue

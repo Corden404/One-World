@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { createSiteServer } from './serve.mjs';
 import { LIGHT_OUT_DISTANCE, NIGHT_PAUSE_MS, LEG_DISTANCE } from '../dist/journey.js';
+import { scenes } from '../dist/scenes.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE_URL || 'playwright');
 const server = createSiteServer({ prefix: '/One-World/' });
 server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -86,16 +87,36 @@ try {
   await page.waitForFunction(position => scrollY === position, LIGHT_OUT_DISTANCE - 200);
   assert.equal(await page.locator('body').getAttribute('data-phase'), 'day-night', 'Reverse wheel input should work immediately during the pause');
   results.nightPausePassed = true;
-  const ids = ['forest', 'ocean', 'cloud', 'snow', 'observatory', 'bamboo', 'town', 'train'];
-  for (let i = 1; i < ids.length; i++) await scroll(page, i * 2300, ids[i]);
+  const ids = scenes.map(scene => scene.id), newScenes = scenes.slice(8);
+  results.newSceneLighting = [];
+  for (let i = 1; i < ids.length; i++) {
+    await scroll(page, i * LEG_DISTANCE, ids[i]);
+    if (!newScenes.includes(scenes[i])) continue;
+    const scene = scenes[i];
+    await page.screenshot({ path: fileURLToPath(new URL(`${scene.id}-day.png`, output)) });
+    await scroll(page, i * LEG_DISTANCE + LIGHT_OUT_DISTANCE, scene.id);
+    await page.waitForFunction(() => document.body.dataset.phase === 'night');
+    const state = await page.evaluate(id => {
+      const element = document.querySelector(`#${id}-scene`);
+      const next = element.nextElementSibling.nextElementSibling;
+      const textures = [...element.querySelectorAll('img')].filter(image => image.src);
+      return { light: Number(getComputedStyle(element).getPropertyValue('--light')), nextLight: Number(getComputedStyle(next).getPropertyValue('--light')), texturesLoaded: textures.every(image => image.complete && image.naturalWidth > 0) };
+    }, scene.id);
+    assert.equal(state.light, 0, `${scene.id}: night must reach the dark texture`);
+    assert.equal(state.nextLight, 1, `${scene.id}: next scene must keep its original lighting`);
+    assert.ok(state.texturesLoaded, `${scene.id}: both lighting images must load`);
+    await page.screenshot({ path: fileURLToPath(new URL(`${scene.id}-night.png`, output)) });
+    results.newSceneLighting.push({ id: scene.id, ...state });
+  }
+  const loopLength = scenes.length * LEG_DISTANCE;
   // Exercise a transition where both scenes intersect the viewport.
-  await page.evaluate(() => scrollTo(0, 16100 + 1600));
+  await page.evaluate(value => scrollTo(0, value), loopLength - LEG_DISTANCE + 1600);
   await page.waitForFunction(() => document.querySelectorAll('.world-scene.ready').length === 2);
   await page.mouse.wheel(0, 900);
   await page.waitForFunction(() => Math.abs(scrollY - 200) < 1);
   await ready(page, 'forest');
   await page.mouse.wheel(0, -350);
-  await page.waitForFunction(() => Math.abs(scrollY - 18250) < 1);
+  await page.waitForFunction(value => Math.abs(scrollY - value) < 1, loopLength - 150);
   await scroll(page, 0, 'forest');
   const loopStats = await page.evaluate(() => ({ ...window.renderStats }));
   assert.equal(loopStats.contexts, 2, 'Looping must reuse at most two WebGL contexts');
@@ -122,6 +143,16 @@ try {
   results.mobileResources = await resources(mobilePage);
   assert.ok(results.mobileResources.filter(entry => entry.name.endsWith('.webp')).every(entry => entry.name.includes('/mobile/')), 'Phones should request compact images only');
   const bounds = await mobilePage.locator('#world-window').boundingBox(); assert.equal(bounds.width, 390); assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 844);
+  for (const scene of scenes.slice(8)) {
+    const index = scenes.indexOf(scene);
+    await scroll(mobilePage, index * LEG_DISTANCE, scene.id);
+    const images = await mobilePage.locator(`#${scene.id}-scene img`).evaluateAll(elements => elements.filter(image => image.src).map(image => ({ src: image.src, complete: image.complete && image.naturalWidth > 0 })));
+    assert.ok(images.every(image => image.src.includes('/mobile/') && image.complete), `${scene.id}: phones must load complete compact lighting images`);
+    await scroll(mobilePage, index * LEG_DISTANCE + LIGHT_OUT_DISTANCE, scene.id);
+    await mobilePage.waitForFunction(() => document.body.dataset.phase === 'night');
+    await mobilePage.screenshot({ path: fileURLToPath(new URL(`${scene.id}-mobile-night.png`, output)) });
+  }
+  results.newMobileScenesPassed = true;
   await scroll(mobilePage, 2300, 'ocean');
   await mobilePage.setViewportSize({ width: 1024, height: 1366 });
   await mobilePage.waitForFunction(() => document.querySelector('#ocean-scene .scene-fallback').src.endsWith('/assets/ocean-on.webp'));
@@ -154,6 +185,11 @@ try {
   await fallbackPage.evaluate(() => scrollTo(0, 2750));
   await fallbackPage.waitForFunction(() => document.body.dataset.scene === 'ocean' && document.querySelector('#ocean-scene .fallback-off')?.complete);
   assert.equal(await fallbackPage.locator('.world-scene.ready').count(), 0);
+  for (const scene of scenes.slice(8)) {
+    await fallbackPage.evaluate(value => scrollTo(0, value), scenes.indexOf(scene) * LEG_DISTANCE + LIGHT_OUT_DISTANCE);
+    await fallbackPage.waitForFunction(id => document.body.dataset.scene === id && document.querySelector(`#${id}-scene .fallback-off`)?.complete && document.querySelector(`#${id}-scene .fallback-off`)?.naturalWidth > 0, scene.id);
+    assert.equal(await fallbackPage.locator(`#${scene.id}-scene`).evaluate(element => Number(getComputedStyle(element).getPropertyValue('--light'))), 0);
+  }
   results.staticFallbackPassed = true; await fallback.close();
   assert.deepEqual(errors, [], 'Browser should not produce uncaught errors');
   results.initialBytes = results.initialResources.reduce((sum, entry) => sum + entry.bytes, 0);

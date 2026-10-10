@@ -8,7 +8,8 @@ import { buildDepthMesh, meshResolution } from '../dist/geometry.js';
 import { sceneAssets } from '../dist/assets.js';
 
 test('every world has two lighting textures, depth and an outgoing connector', () => {
-  assert.equal(scenes.length, 8);
+  assert.equal(scenes.length, 12);
+  assert.equal(new Set(scenes.map(scene => scene.id)).size, scenes.length, 'Scene IDs must be unique');
   for (const scene of scenes.flatMap(scene => [scene, sceneAssets(scene, true)])) for (const field of ['image', 'darkImage', 'depth', 'connector']) {
     assert.ok(scene[field], `${scene.id}: ${field}`);
     assert.ok(existsSync(new URL(`../dist/${scene[field]}`, import.meta.url)), `${scene.id}: missing ${field}`);
