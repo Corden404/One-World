@@ -32,7 +32,10 @@ async function instrument(page) {
   });
 }
 async function ready(page, id) {
-  await page.waitForFunction(scene => document.body.dataset.scene === scene && document.querySelector(`#${scene}-scene`).classList.contains('ready'), id);
+  await page.waitForFunction(scene => {
+    const element = document.querySelector(`#${scene}-scene`), night = element?.querySelector('.fallback-off');
+    return document.body.dataset.scene === scene && element.classList.contains('ready') && night?.complete && night.naturalWidth > 0;
+  }, id);
 }
 async function scroll(page, position, id) {
   await page.evaluate(value => scrollTo(0, value), position); await ready(page, id);
@@ -164,6 +167,30 @@ try {
   await scroll(mobilePage, 0, 'forest');
   await mobilePage.screenshot({ path: fileURLToPath(new URL('mobile.png', output)) });
   results.mobileRotationPassed = true; await mobile.close();
+
+  const progressive = await browser.newContext({ reducedMotion: 'reduce' });
+  const progressivePage = await progressive.newPage(); await instrument(progressivePage);
+  let releaseDepth, releaseNight;
+  const depthGate = new Promise(resolve => { releaseDepth = resolve; });
+  const nightGate = new Promise(resolve => { releaseNight = resolve; });
+  await progressivePage.route('**/ocean-depth.png', async route => { await depthGate; await route.continue(); });
+  await progressivePage.route('**/ocean-off.webp', async route => { await nightGate; await route.continue(); });
+  try {
+    await progressivePage.goto(url); await ready(progressivePage, 'forest');
+    await progressivePage.evaluate(value => scrollTo(0, value), LEG_DISTANCE);
+    await progressivePage.waitForFunction(() => {
+      const image = document.querySelector('#ocean-scene .scene-fallback');
+      return document.body.dataset.scene === 'ocean' && image.complete && image.naturalWidth > 0;
+    });
+    assert.equal(await progressivePage.locator('#ocean-scene').evaluate(element => element.classList.contains('ready')), false, 'Day image must appear before the delayed depth map');
+    assert.equal(await progressivePage.locator('#ocean-scene .fallback-off').count(), 0, 'Day image must appear before the delayed night image');
+    await progressivePage.screenshot({ path: fileURLToPath(new URL('progressive-static.png', output)) });
+    releaseDepth();
+    await progressivePage.waitForFunction(() => document.querySelector('#ocean-scene').classList.contains('ready'));
+    assert.equal(await progressivePage.locator('#ocean-scene .fallback-off').count(), 0, 'Depth must activate without waiting for night');
+    releaseNight(); await ready(progressivePage, 'ocean');
+    results.progressiveLoadingPassed = true;
+  } finally { releaseDepth(); releaseNight(); await progressive.close(); }
 
   const failure = await browser.newContext({ reducedMotion: 'reduce' });
   const failurePage = await failure.newPage(); await instrument(failurePage);

@@ -126,19 +126,32 @@ export class DepthView {
   notify(name) { this.element.dispatchEvent(new CustomEvent(name, { bubbles: true })); }
   async init() {
     const version = ++this.serial, scene = sceneAssets(this.config, compactMedia.matches); this.loadingImage = scene.image;
-    const results = await Promise.allSettled([loadImage(scene.image), scene.darkImage ? loadImage(scene.darkImage) : Promise.resolve(null), loadImage(scene.depth)]);
+    let on = null, off = null, depth = null;
+    const update = () => {
+      if (version !== this.serial || !on) return;
+      this.scene = scene; this.on = on; this.off = off; this.depth = depth;
+      this.fallback.src = this.frame.src = scene.image;
+      let offImage = this.surface.querySelector('.fallback-off');
+      if (off) {
+        if (!offImage) { offImage = new Image(); offImage.alt = ''; offImage.className = 'fallback-off'; this.surface.insertBefore(offImage, this.canvas); }
+        offImage.src = scene.darkImage;
+      } else offImage?.remove();
+      this.lastDraw = null; this.styleLight = null;
+      if (this.active) {
+        if (depth) { if (this.slot) this.setup(); else this.activate(); }
+        else this.release();
+      }
+      this.notify('depth-updated');
+    };
+    // Show the day image as soon as it arrives; optional effects must not block it.
+    const results = await Promise.allSettled([
+      loadImage(scene.image).then(image => { on = image; update(); }),
+      scene.darkImage ? loadImage(scene.darkImage).then(image => { off = image; update(); }) : Promise.resolve(),
+      loadImage(scene.depth).then(image => { depth = image; update(); }),
+    ]);
     if (version !== this.serial) return this.complete;
     this.loadingImage = null;
-    if (results[0].status === 'rejected') throw results[0].reason;
-    this.scene = scene; this.on = results[0].value; this.off = results[1].status === 'fulfilled' ? results[1].value : null;
-    this.depth = results[2].status === 'fulfilled' ? results[2].value : null; this.complete = results.every(result => result.status === 'fulfilled');
-    this.fallback.src = this.frame.src = scene.image;
-    let offImage = this.surface.querySelector('.fallback-off');
-    if (this.off) { if (!offImage) { offImage = new Image(); offImage.alt = ''; offImage.className = 'fallback-off'; this.surface.insertBefore(offImage, this.canvas); } offImage.src = scene.darkImage; }
-    else offImage?.remove();
-    this.lastDraw = null; this.styleLight = null;
-    if (this.active) { if (this.depth) { if (this.slot) this.setup(); else this.activate(); } else this.release(); }
-    this.notify('scene-layout'); this.notify('depth-updated');
+    this.complete = results.every(result => result.status === 'fulfilled');
     if (!this.complete) throw results.find(result => result.status === 'rejected').reason;
     return true;
   }
