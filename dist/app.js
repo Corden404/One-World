@@ -6,6 +6,7 @@ import { MotionInput } from './motion.js';
 
 const stage = document.querySelector('#world-window'), track = document.querySelector('#world-track');
 const status = document.querySelector('#live-status'), scrollSpace = document.querySelector('#scroll-space');
+const hint = document.querySelector('#interaction-hint');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)'), compact = matchMedia(COMPACT_MEDIA);
 const viewScenes = [...scenes, scenes[0]], maximumScroll = scenes.length * LEG_DISTANCE;
 const wheelJourney = new WheelJourney(scenes.length);
@@ -16,6 +17,7 @@ let retainedFrom = -1, retainedCompact = null;
 let loading = true, depthEnabled = !reduced.matches, current = -1, hasExplored = window.scrollY > 0;
 let journey = journeyAt(window.scrollY, viewScenes.length), metrics = [], layoutDirty = true, journeyDirty = true;
 let animationFrame = 0, previous = performance.now();
+let hintDismissed = false, hintTimer = 0;
 const announce = text => { status.textContent = text; };
 const motion = new MotionInput(position => {
   if (!depthEnabled || reduced.matches || document.hidden || (position.x === target.x && position.y === target.y)) return;
@@ -23,9 +25,29 @@ const motion = new MotionInput(position => {
 }, state => {
   document.body.dataset.motion = state;
   if (state === 'denied') announce('倾斜感应未获授权，仍可滑动探索场景。');
+  updateHint();
   requestRender();
 });
 const mobile = matchMedia('(pointer:coarse)').matches || navigator.maxTouchPoints > 0;
+function updateHint() {
+  hint.firstElementChild.textContent = mobile ? '上下滑动探索十二幕世界' : '滚动探索十二幕世界';
+  const detail = reduced.matches ? '每幕都有独立的日夜变化' : !mobile ? '移动鼠标感受景深 · 聚焦画面后按 D 切换' :
+    motion.state === 'needs-permission' ? '轻触画面后可启用倾斜感应' : motion.listening ? '轻轻倾斜手机感受景深' : '左右轻滑感受景深';
+  hint.lastElementChild.textContent = detail;
+}
+function dismissHint() {
+  if (hintDismissed) return;
+  hintDismissed = true; clearTimeout(hintTimer); hint.classList.add('is-dismissed');
+  hintTimer = setTimeout(() => { hint.hidden = true; }, 400);
+}
+function showHint() {
+  if (hintDismissed) return;
+  try {
+    if (sessionStorage.getItem('one-world:interaction-hint')) return;
+    sessionStorage.setItem('one-world:interaction-hint', 'seen');
+  } catch { /* Guidance still works when session storage is unavailable. */ }
+  updateHint(); hint.hidden = false; hintTimer = setTimeout(dismissHint, 6500);
+}
 track.replaceChildren();
 viewScenes.forEach((scene, index) => {
   const element = document.createElement('div'); element.className = 'world-scene'; element.id = `${scene.id}${index === scenes.length ? '-return' : ''}-scene`;
@@ -145,9 +167,10 @@ function render(now) {
   drawViews();
   if (canMove && moving) requestRender();
 }
-window.addEventListener('scroll', () => { if (window.scrollY > 0) hasExplored = true; journeyDirty = true; requestRender(); }, { passive: true });
+window.addEventListener('scroll', () => { if (window.scrollY > 0) { hasExplored = true; dismissHint(); } journeyDirty = true; requestRender(); }, { passive: true });
 window.addEventListener('wheel', event => {
   if (event.ctrlKey || !event.deltaY) return;
+  dismissHint();
   const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
   event.preventDefault(); hasExplored = true; journeyDirty = true; window.scrollTo(0, wheelJourney.advance(window.scrollY, delta, performance.now())); requestRender();
 }, { passive: false });
@@ -158,7 +181,7 @@ stage.addEventListener('depth-updated', requestRender);
 stage.addEventListener('depth-restored', requestRender);
 stage.addEventListener('depth-unavailable', () => { announce('已切换静态画面，仍可滚动探索场景。'); requestRender(); });
 compact.addEventListener('change', updateLayout);
-reduced.addEventListener('change', () => { depthEnabled = !reduced.matches; requestRender(); });
+reduced.addEventListener('change', () => { depthEnabled = !reduced.matches; updateHint(); requestRender(); });
 document.addEventListener('visibilitychange', () => {
   cancelAnimationFrame(animationFrame); animationFrame = 0; previous = performance.now();
   if (!document.hidden) requestRender();
@@ -171,17 +194,26 @@ stage.addEventListener('pointermove', event => {
 function centerPointer() { if (!motion.hasData) { target.x = 0; target.y = 0; requestRender(); } }
 stage.addEventListener('pointerleave', centerPointer);
 let touch = null;
-stage.addEventListener('pointerdown', event => { if (event.pointerType === 'touch') touch = { x: event.clientX, y: event.clientY, time: performance.now() }; });
+stage.addEventListener('pointerdown', event => {
+  stage.focus({ preventScroll: true }); dismissHint();
+  if (event.pointerType === 'touch') touch = { x: event.clientX, y: event.clientY, time: performance.now() };
+});
 stage.addEventListener('pointerup', event => {
   if (touch && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) < 10 && performance.now() - touch.time < 500) motion.enable(true);
   touch = null; centerPointer();
 });
 stage.addEventListener('pointercancel', () => { touch = null; centerPointer(); });
-document.addEventListener('keydown', event => {
-  if (event.altKey || event.ctrlKey || event.metaKey) return;
-  if (event.key.toLowerCase() === 'd') { depthEnabled = !depthEnabled; announce(depthEnabled ? '景深已开启' : '景深已关闭'); requestRender(); }
-  if (event.key.toLowerCase() === 'm') motion.enable(true);
+stage.addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.target.closest('input,textarea,select,[contenteditable]')) return;
+  const key = event.key.toLowerCase();
+  if (key === 'd' || key === 'm') { event.preventDefault(); dismissHint(); }
+  if (key === 'd') { depthEnabled = !depthEnabled; announce(depthEnabled ? '景深已开启' : '景深已关闭'); requestRender(); }
+  if (key === 'm') motion.enable(true);
 });
+const firstImage = views[journey.from].fallback;
+firstImage.addEventListener('load', showHint, { once: true });
+if (firstImage.complete && firstImage.naturalWidth > 0) showHint();
 requestRender();
 if (mobile) motion.enable();
 prepareScene(journey.from).then(() => {

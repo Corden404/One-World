@@ -4,6 +4,12 @@ html{margin:0;background:#000;scroll-behavior:auto;scrollbar-width:none}
 html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 body{margin:0;min-height:100svh;background:#000;overflow-x:hidden;scrollbar-width:none}
 .world-window{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(100svh * .681369));height:min(100svh,calc(100vw / .681369));overflow:hidden;background:#000;outline:none;touch-action:pan-y pinch-zoom}
+.world-window:focus-visible{outline:2px solid #d9c4a0;outline-offset:-3px}
+.world-window:focus-visible::after{content:"";position:absolute;inset:2px;border:2px solid #d9c4a0;z-index:1;pointer-events:none}
+.interaction-hint{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);padding:10px 16px;background:rgba(0,0,0,.8);color:#f2eee5;font:14px/1.6 system-ui,sans-serif;text-align:center;pointer-events:none;transition:opacity .4s}
+.interaction-hint.is-dismissed{opacity:0}
+.interaction-hint span{display:block}
+.interaction-hint span+span{color:#d9c4a0;font-size:12px}
 .world-track{position:absolute;top:0;left:50%;margin-left:-50vw;width:100vw;will-change:transform}
 .world-scene{--scene-aspect:.681369;--light:1;position:relative;margin:0 auto;width:min(100vw,calc(100svh * var(--scene-aspect)));height:calc(min(100vw,calc(100svh * var(--scene-aspect))) / var(--scene-aspect));overflow:hidden;background:#000}
 .scene-surface{position:absolute;inset:0;width:100%;height:100%}

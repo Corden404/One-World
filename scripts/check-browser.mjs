@@ -48,6 +48,8 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage(); await instrument(page); await page.goto(url); await ready(page, 'forest');
   await page.waitForTimeout(200);
+  assert.ok(await page.locator('#interaction-hint').isVisible(), 'First visit should explain how to explore');
+  await page.screenshot({ path: fileURLToPath(new URL('onboarding-desktop.png', output)) });
   results.initialResources = await resources(page);
   assert.equal(new Set(results.initialResources.map(entry => entry.name)).size, 3, 'First visit should load only the current scene');
   const idleBefore = await page.evaluate(() => ({ ...window.renderStats }));
@@ -57,6 +59,14 @@ try {
   results.idleFrames = idleAfter.frames - idleBefore.frames;
   assert.equal(results.idleDraws, 0, 'Default idle scene must stop drawing beyond the former automatic-motion delay');
   assert.equal(results.idleFrames, 0, 'Default idle scene must stop scheduling animation frames');
+  await page.locator('#interaction-hint').waitFor({ state: 'hidden' });
+  const statusBeforeKeys = await page.locator('#live-status').textContent();
+  await page.keyboard.press('d'); await page.keyboard.press('m');
+  assert.equal(await page.locator('#live-status').textContent(), statusBeforeKeys, 'Scene shortcuts should not fire outside the stage');
+  assert.equal(await page.locator('body').getAttribute('data-motion'), null, 'M should not request sensors without stage focus');
+  await page.keyboard.press('Tab');
+  assert.ok(await page.locator('#world-window').evaluate(element => element === document.activeElement && element.matches(':focus-visible') && getComputedStyle(element).outlineStyle === 'solid'), 'Keyboard focus must have a visible outline');
+  await page.screenshot({ path: fileURLToPath(new URL('keyboard-focus.png', output)) });
   await page.mouse.move(800, 550);
   await page.waitForFunction(() => Math.abs(Number(document.body.dataset.tiltX)) > .1);
   const enabledDraws = await page.evaluate(() => window.renderStats.draws);
@@ -65,7 +75,14 @@ try {
   await page.waitForTimeout(300);
   assert.equal(await page.evaluate(() => window.renderStats.draws), disabledDraws, 'Disabling depth should stop drawing a stationary scene');
   assert.ok(disabledDraws > enabledDraws, 'Depth toggle must redraw the centered image');
-  await page.keyboard.press('d');
+  const statusAfterToggle = await page.locator('#live-status').textContent();
+  await page.keyboard.down('d'); await page.keyboard.down('d'); await page.keyboard.up('d');
+  assert.notEqual(await page.locator('#live-status').textContent(), statusAfterToggle, 'Holding D should toggle only once');
+  await page.keyboard.press('Control+d');
+  assert.equal(await page.locator('#live-status').textContent(), '景深已开启', 'Modified browser shortcuts should retain their default meaning');
+  await page.keyboard.press('m');
+  await page.waitForFunction(() => document.body.dataset.motion !== undefined);
+  results.scopedShortcutsPassed = true;
   await page.emulateMedia({ reducedMotion: 'reduce' }); await page.waitForTimeout(500);
   const before = await page.evaluate(() => ({ ...window.renderStats }));
   await page.waitForTimeout(1000);
@@ -149,10 +166,19 @@ try {
   await page.waitForTimeout(150);
   assert.equal(await page.evaluate(() => document.querySelector('#forest-scene canvas').width), canvasWidth);
   results.contextRestored = true;
+  await page.goto(url); await ready(page, 'forest');
+  assert.equal(await page.locator('#interaction-hint').isVisible(), false, 'Guidance should stay dismissed on return visits in the same session');
+  results.firstVisitGuidancePassed = true;
   await context.close();
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, reducedMotion: 'reduce' });
   const mobilePage = await mobile.newPage(); await instrument(mobilePage); await mobilePage.goto(url); await ready(mobilePage, 'forest'); await mobilePage.waitForTimeout(150);
+  assert.ok(await mobilePage.locator('#interaction-hint').isVisible());
+  assert.ok((await mobilePage.locator('#interaction-hint').textContent()).includes('上下滑动'));
+  assert.ok(!(await mobilePage.locator('#interaction-hint').textContent()).includes('倾斜'), 'Reduced motion guidance should not encourage parallax');
+  const hintBounds = await mobilePage.locator('#interaction-hint').boundingBox();
+  assert.ok(hintBounds.x >= 0 && hintBounds.x + hintBounds.width <= 390 && hintBounds.y + hintBounds.height <= 844, 'Phone guidance must fit within the viewport');
+  await mobilePage.screenshot({ path: fileURLToPath(new URL('onboarding-mobile.png', output)) });
   results.mobileResources = await resources(mobilePage);
   assert.ok(results.mobileResources.filter(entry => entry.name.endsWith('.webp')).every(entry => entry.name.includes('/mobile/')), 'Phones should request compact images only');
   const bounds = await mobilePage.locator('#world-window').boundingBox(); assert.equal(bounds.width, 390); assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 844);
@@ -166,6 +192,7 @@ try {
     await mobilePage.screenshot({ path: fileURLToPath(new URL(`${scene.id}-mobile-night.png`, output)) });
   }
   results.newMobileScenesPassed = true;
+  assert.equal(await mobilePage.locator('#interaction-hint').isVisible(), false, 'Exploration should dismiss guidance');
   await scroll(mobilePage, 2300, 'ocean');
   await mobilePage.setViewportSize({ width: 1024, height: 1366 });
   await mobilePage.waitForFunction(() => document.querySelector('#ocean-scene .scene-fallback').src.endsWith('/assets/ocean-on.webp'));

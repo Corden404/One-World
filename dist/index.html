@@ -10,11 +10,15 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main class="world-window" id="world-window" tabindex="0" aria-label="森林秘境，滚动或上下滑动探索不同场景，移动鼠标探索景深。">
+  <main class="world-window" id="world-window" tabindex="0" aria-keyshortcuts="D M" aria-label="森林秘境，滚动或上下滑动探索不同场景，移动鼠标探索景深。">
     <div class="world-track" id="world-track">
       <div class="world-scene"><picture><source media="(pointer: coarse) and (max-width: 512px), (pointer: coarse) and (max-height: 768px)" srcset="./assets/mobile/forest-on.webp"><img class="scene-fallback" src="./assets/forest-on.webp" fetchpriority="high" alt="木质相框中，暖光下的微缩森林与小狐狸"></picture></div>
     </div>
   </main>
+  <div id="interaction-hint" class="interaction-hint" hidden>
+    <span>滚动探索十二幕世界</span>
+    <span id="interaction-detail">移动鼠标感受景深 · 聚焦画面后按 D 切换</span>
+  </div>
   <div id="scroll-space" aria-hidden="true"></div>
   <div id="live-status" class="sr-only" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
