@@ -27,14 +27,17 @@ export class MotionInput {
     this.environment = environment; this.onMove = onMove; this.onState = onState;
     this.state = 'idle'; this.hasData = false; this.listening = false;
     this.baseline = null; this.lastOrientation = -Infinity; this.rotation = { beta: 0, gamma: 0 };
+    this.lastPointer = null;
     this.angle = () => environment.screen?.orientation?.angle ?? environment.orientation ?? 0;
     this.orientation = event => {
+      if (environment.document?.hidden) return;
       if (!Number.isFinite(event.beta) || !Number.isFinite(event.gamma)) return;
       this.lastOrientation = performance.now();
       this.baseline ??= { beta: event.beta, gamma: event.gamma };
       this.emit(tiltToPointer(event.beta, event.gamma, this.baseline, this.angle()));
     };
     this.motion = event => {
+      if (environment.document?.hidden) return;
       if (performance.now() - this.lastOrientation < 600) return;
       const rate = event.rotationRate;
       if (!rate || !Number.isFinite(rate.beta) || !Number.isFinite(rate.gamma)) return;
@@ -46,10 +49,13 @@ export class MotionInput {
     };
     this.recenter = () => {
       this.baseline = null; this.lastOrientation = -Infinity; this.rotation = { beta: 0, gamma: 0 };
+      this.lastPointer = null;
       this.onMove({ x: 0, y: 0 });
     };
   }
   emit(pointer) {
+    if (this.lastPointer && Math.abs(pointer.x - this.lastPointer.x) <= .001 && Math.abs(pointer.y - this.lastPointer.y) <= .001) return;
+    this.lastPointer = { ...pointer };
     this.hasData = true;
     if (this.state !== 'active') { this.state = 'active'; this.onState(this.state); }
     this.onMove(pointer);

@@ -7,6 +7,28 @@ import { MotionInput, tiltToPointer, sensorPermission } from '../dist/motion.js'
 import { buildDepthMesh, meshResolution } from '../dist/geometry.js';
 import { sceneAssets } from '../dist/assets.js';
 
+test('stationary sensors do not emit duplicate moves and hidden readings do not recalibrate', async () => {
+  const listeners = new Map(), values = [];
+  const environment = { isSecureContext: true, DeviceOrientationEvent: {},
+    document: { hidden: false, addEventListener: (name, fn) => listeners.set(`document-${name}`, fn) },
+    addEventListener: (name, fn) => listeners.set(name, fn) };
+  const input = new MotionInput(value => values.push(value), () => {}, environment);
+  await input.enable();
+  const orientation = listeners.get('deviceorientation');
+  orientation({ beta: 60, gamma: 0 });
+  orientation({ beta: 60, gamma: 0 });
+  orientation({ beta: 60.009, gamma: .009 });
+  assert.equal(values.length, 1, 'Identical readings and tiny noise must not redraw');
+  orientation({ beta: 60.09, gamma: .09 });
+  assert.equal(values.length, 2, 'Intentional tilt must still emit');
+  environment.document.hidden = true;
+  orientation({ beta: 90, gamma: 30 });
+  assert.equal(values.length, 2);
+  environment.document.hidden = false; listeners.get('document-visibilitychange')();
+  orientation({ beta: 80, gamma: 20 });
+  assert.deepEqual(values.at(-1), { x: 0, y: 0 }, 'Returning to the page must recenter the hold angle');
+});
+
 test('every world has two lighting textures, depth and an outgoing connector', () => {
   assert.equal(scenes.length, 12);
   assert.equal(new Set(scenes.map(scene => scene.id)).size, scenes.length, 'Scene IDs must be unique');

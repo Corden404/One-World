@@ -11,11 +11,14 @@ const viewScenes = [...scenes, scenes[0]], maximumScroll = scenes.length * LEG_D
 const wheelJourney = new WheelJourney(scenes.length);
 const target = { x: 0, y: 0 }, pointer = { x: 0, y: 0 }, views = [], connectors = [];
 const sceneLoads = new Map(), connectorLoads = new Map(), retryAfter = new Map();
-let loading = true, depthEnabled = !reduced.matches, lastInput = 0, current = -1, hasExplored = window.scrollY > 0;
-let journey = journeyAt(window.scrollY, viewScenes.length), metrics = [], layoutDirty = true;
-let animationFrame = 0, idleTimer = 0, previous = performance.now();
+let loading = true, depthEnabled = !reduced.matches, current = -1, hasExplored = window.scrollY > 0;
+let journey = journeyAt(window.scrollY, viewScenes.length), metrics = [], layoutDirty = true, journeyDirty = true;
+let animationFrame = 0, previous = performance.now();
 const announce = text => { status.textContent = text; };
-const motion = new MotionInput(position => { Object.assign(target, position); lastInput = performance.now(); requestRender(); }, state => {
+const motion = new MotionInput(position => {
+  if (!depthEnabled || reduced.matches || document.hidden || (position.x === target.x && position.y === target.y)) return;
+  Object.assign(target, position); requestRender();
+}, state => {
   document.body.dataset.motion = state;
   if (state === 'denied') announce('倾斜感应未获授权，仍可滑动探索场景。');
   requestRender();
@@ -93,9 +96,8 @@ function applyJourney() {
   document.body.dataset.scene = viewScenes[current].id; document.body.dataset.phase = journey.phase;
   document.body.dataset.progress = window.scrollY.toFixed(2);
 }
-function updateLayout() { layoutDirty = true; requestRender(); }
+function updateLayout() { layoutDirty = journeyDirty = true; requestRender(); }
 function requestRender() {
-  clearTimeout(idleTimer); idleTimer = 0;
   if (!animationFrame && !document.hidden) animationFrame = requestAnimationFrame(render);
 }
 function drawViews() {
@@ -109,28 +111,25 @@ function drawViews() {
 function render(now) {
   animationFrame = 0; if (document.hidden) return;
   const dt = Math.min(50, now - previous); previous = now;
-  if (layoutDirty) refreshMetrics(); applyJourney();
+  if (layoutDirty) { refreshMetrics(); journeyDirty = true; }
+  if (journeyDirty) { journeyDirty = false; applyJourney(); }
   const canMove = depthEnabled && !reduced.matches;
-  const canIdle = canMove && !loading && journey.phase === 'day' && !motion.hasData;
-  const idle = canIdle && now - lastInput >= 4500;
-  const x = canMove ? (idle ? Math.sin(now * .00023) * .13 : target.x) : 0;
-  const y = canMove ? (idle ? Math.cos(now * .00019) * .10 : target.y) : 0;
+  const x = canMove ? target.x : 0, y = canMove ? target.y : 0;
   const smooth = 1 - Math.exp(-dt / 140);
   pointer.x += (x - pointer.x) * smooth; pointer.y += (y - pointer.y) * smooth;
   const moving = Math.abs(x - pointer.x) + Math.abs(y - pointer.y) > .0001;
   if (!moving) { pointer.x = x; pointer.y = y; }
   drawViews();
-  if (canMove && (moving || idle)) requestRender();
-  else if (canIdle) idleTimer = setTimeout(requestRender, Math.max(0, 4500 - (now - lastInput)));
+  if (canMove && moving) requestRender();
 }
-window.addEventListener('scroll', () => { if (window.scrollY > 0) hasExplored = true; requestRender(); }, { passive: true });
+window.addEventListener('scroll', () => { if (window.scrollY > 0) hasExplored = true; journeyDirty = true; requestRender(); }, { passive: true });
 window.addEventListener('wheel', event => {
   if (event.ctrlKey || !event.deltaY) return;
   const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
-  event.preventDefault(); hasExplored = true; window.scrollTo(0, wheelJourney.advance(window.scrollY, delta, performance.now())); requestRender();
+  event.preventDefault(); hasExplored = true; journeyDirty = true; window.scrollTo(0, wheelJourney.advance(window.scrollY, delta, performance.now())); requestRender();
 }, { passive: false });
 window.addEventListener('resize', updateLayout, { passive: true });
-window.addEventListener('online', () => { retryAfter.clear(); requestRender(); });
+window.addEventListener('online', () => { retryAfter.clear(); journeyDirty = true; requestRender(); });
 stage.addEventListener('scene-layout', updateLayout);
 stage.addEventListener('depth-updated', requestRender);
 stage.addEventListener('depth-restored', requestRender);
@@ -138,13 +137,13 @@ stage.addEventListener('depth-unavailable', () => { announce('已切换静态画
 compact.addEventListener('change', updateLayout);
 reduced.addEventListener('change', () => { depthEnabled = !reduced.matches; requestRender(); });
 document.addEventListener('visibilitychange', () => {
-  cancelAnimationFrame(animationFrame); animationFrame = 0; clearTimeout(idleTimer); idleTimer = 0; previous = performance.now();
+  cancelAnimationFrame(animationFrame); animationFrame = 0; previous = performance.now();
   if (!document.hidden) requestRender();
 });
 stage.addEventListener('pointermove', event => {
   if (event.pointerType === 'touch' && motion.hasData) return;
   const rect = stage.getBoundingClientRect(); target.x = Math.max(-1, Math.min(1, ((event.clientX - rect.left) / rect.width - .5) * 2));
-  target.y = Math.max(-1, Math.min(1, -((event.clientY - rect.top) / rect.height - .5) * 2)); lastInput = performance.now(); requestRender();
+  target.y = Math.max(-1, Math.min(1, -((event.clientY - rect.top) / rect.height - .5) * 2)); requestRender();
 });
 function centerPointer() { if (!motion.hasData) { target.x = 0; target.y = 0; requestRender(); } }
 stage.addEventListener('pointerleave', centerPointer);

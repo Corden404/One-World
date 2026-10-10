@@ -50,6 +50,13 @@ try {
   await page.waitForTimeout(200);
   results.initialResources = await resources(page);
   assert.equal(new Set(results.initialResources.map(entry => entry.name)).size, 3, 'First visit should load only the current scene');
+  const idleBefore = await page.evaluate(() => ({ ...window.renderStats }));
+  await page.waitForTimeout(5000);
+  const idleAfter = await page.evaluate(() => ({ ...window.renderStats }));
+  results.idleDraws = idleAfter.draws - idleBefore.draws;
+  results.idleFrames = idleAfter.frames - idleBefore.frames;
+  assert.equal(results.idleDraws, 0, 'Default idle scene must stop drawing beyond the former automatic-motion delay');
+  assert.equal(results.idleFrames, 0, 'Default idle scene must stop scheduling animation frames');
   await page.mouse.move(800, 550);
   await page.waitForFunction(() => Math.abs(Number(document.body.dataset.tiltX)) > .1);
   const enabledDraws = await page.evaluate(() => window.renderStats.draws);
