@@ -19,6 +19,7 @@ selection.add_argument('--wide-only', action='store_true')
 selection.add_argument('--expansion-only', action='store_true')
 selection.add_argument('--papercut-only', action='store_true')
 selection.add_argument('--new-scenes-only', action='store_true', help='Prepare lighthouse, desert, workshop, lotus and their connectors')
+selection.add_argument('--connectors-only', action='store_true', help='Prepare compact connector textures without changing scene images')
 args = parser.parse_args()
 assets.mkdir(parents=True, exist_ok=True)
 if args.mobile_only:
@@ -29,6 +30,8 @@ if args.mobile_only:
         names = {f'{name}-{state}.webp' for name in new_names for state in ['on', 'off']}
         names.update(f'{name}-connector.webp' for name in new_connectors)
         mobile_sources = [assets / name for name in sorted(names)]
+    elif args.connectors_only:
+        mobile_sources = sorted(assets.glob('*-connector.webp'))
     for source in mobile_sources:
         image = Image.open(source).convert('RGB')
         image.thumbnail((768, 1152), Image.Resampling.LANCZOS)
@@ -60,14 +63,17 @@ if args.new_scenes_only:
 sources = (wide_sources if args.wide_only else expansion_sources if args.expansion_only else
            papercut_sources if args.papercut_only else new_sources if args.new_scenes_only else
            sources + expansion_sources + papercut_sources + new_sources)
+if args.connectors_only:
+    sources = [(source, name) for source, name in sources if name.endswith('-connector')]
 for source, name in sources:
     if not (root / source).exists():
         if args.new_scenes_only:
             raise FileNotFoundError(f'Missing new scene source: {root / source}')
         continue
     image = Image.open(root / source).convert('RGB')
-    image.thumbnail((2048, 1600), Image.Resampling.LANCZOS)
-    image.save(assets / f'{name}.webp', quality=92, method=6)
+    connector = name.endswith('-connector')
+    image.thumbnail((1024, 1024) if connector else (2048, 1600), Image.Resampling.LANCZOS)
+    image.save(assets / f'{name}.webp', quality=85 if connector else 92, method=6)
     print(f'{name}: {image.size}', flush=True)
 if args.depth:
     import onnxruntime as ort
